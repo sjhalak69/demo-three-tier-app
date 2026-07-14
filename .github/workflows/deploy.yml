@@ -1,0 +1,86 @@
+name: Build and run frontend and backend
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - '.github/workflows/**'
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  TAG: ${{ github.sha }}
+  FRONTEND: frontend
+  MYSQL_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
+  MYSQL_DATABASE: ${{ secrets.DB_NAME }}
+
+jobs:
+  build-and-push:
+    name: build and push image 
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository 
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR 
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login $REGISTRY -u "${{ github.actor }}" --password-stdin 
+
+      - name: Build Image and run
+        run: |
+          docker build ./frontend -t $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG   
+          docker build ./backend -t $REGISTRY/$IMAGE_NAME/backend:$TAG 
+
+          echo "Docker build completed successfully!"
+          docker images
+
+          docker push $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG 
+          docker push $REGISTRY/$IMAGE_NAME/backend:$TAG 
+  deploy:
+    name: Deploy on Server
+    runs-on: ubuntu-latest
+    needs: build-and-push
+
+    steps:
+      - name: Configure SSH 
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 600 key.pem 
+
+      - name: Deploy on EC2 
+        run: |
+          ssh -i key.pem -o StrictHostKeyChecking=no ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} "
+
+          mkdir -p ~/my-3-tier-app && cd ~/my-3-tier-app &&
+          git fetch --all &&
+          git reset --hard origin/main &&
+
+          sudo docker compose down --remove-orphans || true && 
+  
+          sudo docker system prune -af &&
+          sudo docker volume prune -f &&
+          
+
+          sudo docker pull $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG &&
+          sudo docker pull $REGISTRY/$IMAGE_NAME/backend:$TAG &&
+          sudo docker pull mysql:8.0 &&
+
+          sudo docker rm -f $FRONTEND || true &&
+          sudo docker rm -f backend || true &&
+          sudo docker rm -f mysql-db || true &&
+
+          sudo docker run -d --name mysql-db --network app-network -v mysql_data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD -e MYSQL_DATABASE=$MYSQL_DATABASE mysql:8.0 &&
+          sudo docker run -d --name backend --network app-network -p 8080:8080 -e DB_HOST=mysql-db -e DB_USER=root -e DB_PASSWORD=$MYSQL_ROOT_PASSWORD -e DB_NAME=$MYSQL_DATABASE $REGISTRY/$IMAGE_NAME/backend:$TAG &&
+          sudo docker run -d --name $FRONTEND -p 80:80 $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG &&
+          
+          sudo docker compose up --build -d &&
+          sudo docker ps -a &&
+          echo "Deployment completed successfully!" &&
+          sudo docker images"
+   
