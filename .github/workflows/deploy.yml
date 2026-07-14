@@ -63,6 +63,8 @@ jobs:
           sudo docker build -t my-angular-frontend ./frontend &&
           sudo docker build -t my-springboot-backend ./backend &&
 
+          sudo docker network create app-net || true &&
+
           sudo docker run -d --name app_mysql --network app-net \
           -p 3306:3306 \
           -v mysql_data:/var/lib/mysql \
