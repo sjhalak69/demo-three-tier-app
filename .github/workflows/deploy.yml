@@ -71,6 +71,8 @@ jobs:
           -e MYSQL_DATABASE=my_app_db \
           mysql:8.0 &&
 
+          sleep 15 &&
+
           sudo docker run -d --name app_backend --network app-net \
           -p 8080:8080 \
           -e SPRING_DATASOURCE_URL=jdbc:mysql://app_mysql:3306/my_app_db?allowPublicKeyRetrieval=true&useSSL=false \
