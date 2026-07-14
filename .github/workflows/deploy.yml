@@ -15,8 +15,6 @@ env:
   IMAGE_NAME: ${{ github.repository }}
   TAG: ${{ github.sha }}
   FRONTEND: frontend
-  MYSQL_ROOT_PASSWORD: ${{ secrets.DB_ROOT_PASSWORD }}
-  MYSQL_DATABASE: ${{ secrets.DB_NAME }}
 
 jobs:
   build-and-push:
@@ -62,24 +60,11 @@ jobs:
           git reset --hard origin/main &&
 
           sudo docker compose down --remove-orphans || true && 
-  
-          sudo docker system prune -af &&
-          sudo docker volume prune -f &&
+          sudo docker system prune -af --volumes &&
+
+          sudo docker compose pull &&
           
-
-          sudo docker pull $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG &&
-          sudo docker pull $REGISTRY/$IMAGE_NAME/backend:$TAG &&
-          sudo docker pull mysql:8.0 &&
-
-          sudo docker rm -f $FRONTEND || true &&
-          sudo docker rm -f backend || true &&
-          sudo docker rm -f mysql-db || true &&
-
-          sudo docker run -d --name mysql-db --network app-network -v mysql_data:/var/lib/mysql -e MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD -e MYSQL_DATABASE=$MYSQL_DATABASE mysql:8.0 &&
-          sudo docker run -d --name backend --network app-network -p 8080:8080 -e DB_HOST=mysql-db -e DB_USER=root -e DB_PASSWORD=$MYSQL_ROOT_PASSWORD -e DB_NAME=$MYSQL_DATABASE $REGISTRY/$IMAGE_NAME/backend:$TAG &&
-          sudo docker run -d --name $FRONTEND -p 80:80 $REGISTRY/$IMAGE_NAME/$FRONTEND:$TAG &&
-          
-          sudo docker compose up --build -d &&
+          sudo docker compose up -d --build &&
           sudo docker ps -a &&
           echo "Deployment completed successfully!" &&
           sudo docker images"
